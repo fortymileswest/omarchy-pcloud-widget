@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "id": "fortymileswest.pcloud",
+  "name": "pCloud",
+  "version": "1.0.0",
+  "author": "fortymileswest",
+  "homepage": "https://fortymileswest.co.uk",
+  "license": "MIT",
+  "description": "pCloud connection, storage stats, instant search, folder browser, drag-and-drop upload, and share links in the Omarchy bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "pCloud",
+    "description": "Log in to pCloud, mount the drive, search files, upload, and share.",
+    "category": "Files",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 90,
+      "autoMount": true,
+      "mountPoint": "~/pCloudDrive",
+      "cacheMaxSize": "5G",
+      "recentLimit": 20
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 15,
+        "max": 3600,
+        "step": 15,
+        "defaultValue": 90
+      },
+      {
+        "key": "autoMount",
+        "type": "boolean",
+        "label": "Mount the drive automatically after login",
+        "defaultValue": true
+      },
+      {
+        "key": "mountPoint",
+        "type": "string",
+        "label": "Mount point",
+        "defaultValue": "~/pCloudDrive"
+      },
+      {
+        "key": "cacheMaxSize",
+        "type": "string",
+        "label": "Local cache size limit",
+        "defaultValue": "5G"
+      },
+      {
+        "key": "recentLimit",
+        "type": "integer",
+        "label": "Recent files shown",
+        "min": 5,
+        "max": 100,
+        "step": 5,
+        "defaultValue": 20
+      }
+    ]
+  }
+}
