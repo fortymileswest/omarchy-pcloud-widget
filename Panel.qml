@@ -323,7 +323,7 @@ Panel {
               if (pcloud.actionStatus !== "") return pcloud.actionStatus
               if (pcloud.lastError !== "") return pcloud.lastError
               if (root.connected && !pcloud.keyringAvailable)
-                return "secret-tool is missing — the login keyring is unavailable."
+                return "secret-tool is missing, so the login keyring is unavailable."
               if (root.connected && !pcloud.rcloneInstalled)
                 return "Install rclone to mount the drive: omarchy pkg add rclone"
               return ""
@@ -787,7 +787,7 @@ Panel {
 
     Button {
       width: parent.width
-      text: pcloud.connecting ? "Waiting for the browser — cancel" : "Connect pCloud"
+      text: pcloud.connecting ? "Waiting for the browser (cancel)" : "Connect pCloud"
       enabled: pcloud.connecting || (!pcloud.busy && pcloud.rcloneInstalled)
       onClicked: pcloud.connecting ? pcloud.cancelConnect() : root.connectAccount()
     }

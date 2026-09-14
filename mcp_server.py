@@ -3,8 +3,8 @@
 
 It is a thin front end for pcloud.py, so it inherits that helper's auth: the
 token lives in the login keyring and is never passed on a command line or
-placed in an environment variable. There are no third-party dependencies —
-MCP is JSON-RPC 2.0 over stdio, which the standard library covers.
+placed in an environment variable. There are no third-party dependencies,
+since MCP is JSON-RPC 2.0 over stdio, which the standard library covers.
 
 Deliberately read-mostly. It can search, browse, share and upload, but there
 is no delete, move, or rename tool, so a stray model call cannot destroy

@@ -296,7 +296,7 @@ Item {
       return
     }
     Qt.openUrlExternally("https://my.pcloud.com/")
-    note("Drive not mounted — opened pCloud on the web")
+    note("Drive not mounted, so opened pCloud on the web instead")
   }
 
   function revealEntry(entry) {

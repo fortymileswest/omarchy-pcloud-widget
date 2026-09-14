@@ -158,7 +158,7 @@ function relativeTime(timestampSec, nowMs) {
   return Math.floor(days / 365) + "y ago"
 }
 
-// "12.4 MB · 3h ago · /Documents" — trims the parts that have nothing to say.
+// Builds "12.4 MB · 3h ago · /Documents", trimming the parts with nothing to say.
 function entryMeta(entry, nowMs) {
   if (!entry) return ""
   var parts = []

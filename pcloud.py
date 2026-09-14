@@ -42,7 +42,7 @@ LOG_PATH = os.path.join(CACHE_DIR, "mount.log")
 STATUS_CACHE = os.path.join(CACHE_DIR, "status.json")
 
 # Non-secret account metadata lives in config.json; the token lives in the
-# keyring under this schema. Keep the attribute set stable — changing it
+# keyring under this schema. Keep the attribute set stable: changing it
 # orphans the stored secret.
 KEYRING_ATTRS = ["service", "omarchy-pcloud", "key", "token"]
 
@@ -963,7 +963,7 @@ def cmd_upload(argv):
         if not path:
             continue
         if os.path.isdir(path):
-            fail("%s is a folder — only files can be uploaded" % os.path.basename(path))
+            fail("%s is a folder, only files can be uploaded" % os.path.basename(path))
         if not os.path.isfile(path):
             fail("%s does not exist" % path)
         paths.append(path)
@@ -1093,7 +1093,7 @@ def cmd_status(argv):
         if exc.code in (ERR_TOKEN_INVALID, ERR_TOKEN_EXPIRED):
             token_clear()
             payload["authenticated"] = False
-            payload["statusText"] = "Session expired — log in again"
+            payload["statusText"] = "Session expired, log in again"
             emit(payload)
             return
         payload["statusText"] = "Offline"
