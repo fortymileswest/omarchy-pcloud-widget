@@ -17,7 +17,6 @@ written to rclone.conf either.
 import json
 import os
 import re
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -52,6 +51,53 @@ HOSTS = ["api.pcloud.com", "eapi.pcloud.com"]
 
 DEFAULT_MOUNT = os.path.join(HOME, "pCloudDrive")
 TIMEOUT = 25
+
+# Fixed trusted executable paths to prevent PATH injection attacks.
+# Validate file/parent ownership and write permissions before use.
+TRUSTED_COMMANDS = {
+    "secret-tool": ["/usr/bin/secret-tool", "/bin/secret-tool"],
+    "rclone": ["/usr/bin/rclone", "/usr/local/bin/rclone", "/opt/homebrew/bin/rclone"],
+    "fusermount3": ["/usr/bin/fusermount3", "/bin/fusermount3"],
+    "fusermount": ["/usr/bin/fusermount", "/bin/fusermount"],
+    "umount": ["/usr/bin/umount", "/bin/umount"],
+}
+
+# Maximum response size in bytes to prevent memory exhaustion attacks.
+MAX_RESPONSE_SIZE = 50 * 1024 * 1024  # 50 MB
+
+
+def find_trusted_command(name):
+    """Find the first trusted executable path that exists and is safe."""
+    current_uid = os.getuid()
+    for path in TRUSTED_COMMANDS.get(name, []):
+        if not os.path.exists(path):
+            continue
+        try:
+            stat = os.stat(path)
+            # Reject if world-writable or group-writable
+            if stat.st_mode & 0o022:
+                continue
+            # Accept if owned by root or current user
+            if stat.st_uid not in (0, current_uid):
+                continue
+            # Check parent directory: reject if world or group writable
+            parent = os.path.dirname(path)
+            parent_stat = os.stat(parent)
+            if parent_stat.st_mode & 0o022:
+                continue
+            return path
+        except (OSError, AttributeError):
+            continue
+    return None
+
+
+def minimal_env():
+    """Create a minimal environment to prevent credential leakage."""
+    return {
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "HOME": HOME,
+        "USER": os.environ.get("USER", ""),
+    }
 
 # pCloud result codes we branch on.
 ERR_INVALID_REQUEST = 1101
@@ -120,16 +166,17 @@ def config_set(**pairs):
 
 
 def keyring_available():
-    return shutil.which("secret-tool") is not None
+    return find_trusted_command("secret-tool") is not None
 
 
 def token_load():
-    if not keyring_available():
+    cmd = find_trusted_command("secret-tool")
+    if not cmd:
         return ""
     try:
         done = subprocess.run(
-            ["secret-tool", "lookup"] + KEYRING_ATTRS,
-            capture_output=True, text=True, timeout=10,
+            [cmd, "lookup"] + KEYRING_ATTRS,
+            capture_output=True, text=True, timeout=10, env=minimal_env(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return ""
@@ -138,22 +185,24 @@ def token_load():
 
 
 def token_store(token):
-    if not keyring_available():
+    cmd = find_trusted_command("secret-tool")
+    if not cmd:
         raise PcloudError("secret-tool is not installed, cannot store the token securely")
     done = subprocess.run(
-        ["secret-tool", "store", "--label=Omarchy pCloud auth token"] + KEYRING_ATTRS,
-        input=token, capture_output=True, text=True, timeout=15,
+        [cmd, "store", "--label=Omarchy pCloud auth token"] + KEYRING_ATTRS,
+        input=token, capture_output=True, text=True, timeout=15, env=minimal_env(),
     )
     if done.returncode != 0:
         raise PcloudError((done.stderr or "could not write to the keyring").strip())
 
 
 def token_clear():
-    if not keyring_available():
+    cmd = find_trusted_command("secret-tool")
+    if not cmd:
         return
     subprocess.run(
-        ["secret-tool", "clear"] + KEYRING_ATTRS,
-        capture_output=True, text=True, timeout=10,
+        [cmd, "clear"] + KEYRING_ATTRS,
+        capture_output=True, text=True, timeout=10, env=minimal_env(),
     )
 
 
@@ -171,6 +220,7 @@ def api_call(method, params=None, host=None, token=None):
 
     The auth token goes in the Authorization header rather than the query
     string so it stays out of any intermediary's request log.
+    Responses are capped at MAX_RESPONSE_SIZE to prevent memory exhaustion.
     """
     import urllib.parse
     import urllib.request
@@ -188,8 +238,21 @@ def api_call(method, params=None, host=None, token=None):
     for attempt in range(3):
         try:
             with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-                body = response.read().decode("utf-8", "replace")
+                # Read incrementally with a size limit to prevent memory exhaustion
+                chunks = []
+                total = 0
+                while True:
+                    chunk = response.read(65536)  # 64 KB chunks
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > MAX_RESPONSE_SIZE:
+                        raise PcloudError("Response exceeds maximum allowed size (%d bytes)" % MAX_RESPONSE_SIZE)
+                    chunks.append(chunk)
+                body = b"".join(chunks).decode("utf-8", "replace")
             break
+        except PcloudError:
+            raise
         except Exception as exc:  # noqa: BLE001 - reported, not raised
             last = exc
             if attempt < 2:
@@ -209,7 +272,10 @@ def api_call(method, params=None, host=None, token=None):
 
 
 def api_upload(host, token, folderid, paths, progress=None):
-    """multipart/form-data upload; urllib has no multipart helper, so build it."""
+    """multipart/form-data upload; urllib has no multipart helper, so build it.
+
+    Upload responses are capped at MAX_RESPONSE_SIZE to prevent memory exhaustion.
+    """
     import urllib.parse
     import urllib.request
     import uuid
@@ -240,7 +306,21 @@ def api_upload(host, token, folderid, paths, progress=None):
     request.add_header("User-Agent", "omarchy-pcloud-widget/1.0")
     try:
         with urllib.request.urlopen(request, timeout=max(TIMEOUT, 120)) as response:
-            data = json.loads(response.read().decode("utf-8", "replace"))
+            # Read incrementally with a size limit to prevent memory exhaustion
+            resp_chunks = []
+            total = 0
+            while True:
+                chunk = response.read(65536)  # 64 KB chunks
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_RESPONSE_SIZE:
+                    raise PcloudError("Upload response exceeds maximum allowed size (%d bytes)" % MAX_RESPONSE_SIZE)
+                resp_chunks.append(chunk)
+            resp_body = b"".join(resp_chunks).decode("utf-8", "replace")
+            data = json.loads(resp_body)
+    except PcloudError:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise PcloudError("Upload failed (%s)" % exc.__class__.__name__)
     code = int(data.get("result", 0) or 0)
@@ -287,12 +367,13 @@ def rclone_authorize():
     secret. pCloud stopped issuing tokens for the older digest login, which is
     why that path is gone.
     """
-    if not shutil.which("rclone"):
+    cmd = find_trusted_command("rclone")
+    if not cmd:
         raise PcloudError("rclone is not installed")
     try:
         done = subprocess.run(
-            ["rclone", "authorize", "pcloud"],
-            capture_output=True, text=True, timeout=600,
+            [cmd, "authorize", "pcloud"],
+            capture_output=True, text=True, timeout=600, env=minimal_env(),
         )
     except subprocess.TimeoutExpired:
         raise PcloudError("Timed out waiting for the browser sign-in")
@@ -322,7 +403,7 @@ def rclone_authorize():
 
 def cmd_connect(_argv):
     """Authorise through the browser and store the resulting token."""
-    if not shutil.which("rclone"):
+    if not find_trusted_command("rclone"):
         fail("rclone is not installed", needsRclone=True)
     try:
         token = rclone_authorize()
@@ -415,6 +496,8 @@ def rclone_env():
     The whole token document is handed over, refresh token and expiry
     included, so rclone can renew the grant itself. Passing only the access
     token would leave the mount unable to recover once it expired.
+
+    Uses a minimal, controlled environment to prevent credential leakage.
     """
     blob = token_blob()
     token = dict(blob) if blob else {}
@@ -422,7 +505,8 @@ def rclone_env():
     # A zero expiry tells rclone the token does not expire on its own; only
     # claim that when the authorisation really carried no expiry.
     token.setdefault("expiry", "0001-01-01T00:00:00Z")
-    env = dict(os.environ)
+    # Start with minimal environment to prevent credential leakage through inherited variables
+    env = dict(minimal_env())
     env["RCLONE_CONFIG_PCLOUD_TYPE"] = "pcloud"
     env["RCLONE_CONFIG_PCLOUD_HOSTNAME"] = api_host()
     env["RCLONE_CONFIG_PCLOUD_TOKEN"] = json.dumps(token)
@@ -430,7 +514,8 @@ def rclone_env():
 
 
 def cmd_mount(_argv):
-    if not shutil.which("rclone"):
+    rclone_cmd = find_trusted_command("rclone")
+    if not rclone_cmd:
         fail("rclone is not installed", needsRclone=True)
     token = require_token()
     target = mount_point()
@@ -444,7 +529,7 @@ def cmd_mount(_argv):
     os.makedirs(CACHE_DIR, mode=0o700, exist_ok=True)
 
     command = [
-        "rclone", "mount", "pcloud:", target,
+        rclone_cmd, "mount", "pcloud:", target,
         "--vfs-cache-mode", "full",
         "--vfs-cache-max-size", str(config_get("cacheMaxSize", "5G")),
         "--vfs-cache-max-age", str(config_get("cacheMaxAge", "24h")),
@@ -481,11 +566,13 @@ def cmd_unmount(_argv):
     if not is_mounted(target):
         emit({"mounted": False, "mountPoint": target})
         return
-    for command in (["fusermount3", "-u", target], ["fusermount", "-u", target],
-                    ["umount", target]):
-        if not shutil.which(command[0]):
+    for cmd_name in ("fusermount3", "fusermount", "umount"):
+        cmd = find_trusted_command(cmd_name)
+        if not cmd:
             continue
-        done = subprocess.run(command, capture_output=True, text=True, timeout=20)
+        # fusermount/fusermount3 use -u flag, umount does not
+        args = [cmd, "-u", target] if cmd_name.startswith("fuser") else [cmd, target]
+        done = subprocess.run(args, capture_output=True, text=True, timeout=20, env=minimal_env())
         if done.returncode == 0:
             emit({"mounted": False, "mountPoint": target})
             return

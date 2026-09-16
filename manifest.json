@@ -6,6 +6,7 @@
   "author": "fortymileswest",
   "homepage": "https://fortymileswest.co.uk",
   "license": "MIT",
+  "icon": "icon.png",
   "description": "pCloud connection, storage stats, instant search, folder browser, drag-and-drop upload, and share links in the Omarchy bar.",
   "kinds": [
     "bar-widget"

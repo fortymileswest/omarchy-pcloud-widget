@@ -1,5 +1,7 @@
 # pCloud widget for the Omarchy bar
 
+![pCloud Widget Icon](icon.png)
+
 Manage your pCloud connection and files from the Omarchy top bar: storage
 stats, instant search across the whole account, a folder browser,
 drag-and-drop upload and one-click share links. Signing in mounts the drive
@@ -11,12 +13,16 @@ Made by [fortymileswest](https://fortymileswest.co.uk).
 
 ## Install
 
+### Quick install (recommended)
+
 ```bash
 omarchy pkg add rclone                                              # required for the mounted drive
 omarchy plugin add https://github.com/fortymileswest/omarchy-pcloud-widget --enable
 ```
 
-Or clone it yourself first:
+Then click the cloud icon in the bar and press **Connect pCloud**.
+
+### Manual install
 
 ```bash
 git clone https://github.com/fortymileswest/omarchy-pcloud-widget.git
@@ -24,9 +30,25 @@ cd omarchy-pcloud-widget
 ./install.sh                                  # copy into ~/.config/omarchy/plugins/
 omarchy pkg add rclone                        # required for the mounted drive
 omarchy plugin enable fortymileswest.pcloud   # add it to the bar
+omarchy-restart-shell                         # reload the shell to see the widget
 ```
 
-Then click the cloud icon in the bar and press **Connect pCloud**.
+### rclone setup
+
+The widget requires [rclone](https://rclone.org/) to mount your pCloud drive locally. Install it with:
+
+```bash
+omarchy pkg add rclone
+```
+
+If you prefer to install rclone separately (e.g., via Homebrew):
+
+```bash
+brew install rclone  # macOS
+apt install rclone   # Linux
+```
+
+The widget finds rclone in standard system paths (`/usr/bin/`, `/bin/`, `/opt/homebrew/bin/`). Verify installation with `rclone version`.
 
 `install.sh` copies rather than symlinks, because Omarchy rejects symlinks
 inside a plugin folder. Re-run it after editing anything here, then restart
