@@ -21,6 +21,7 @@ Panel {
   property bool cursorActive: false
   property bool dropHover: false
 
+  readonly property string appVersion: "1.0.1"
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color accent: Color.accent
@@ -516,6 +517,15 @@ Panel {
               glyph: "󰍃"
               onActivated: pcloud.logout()
             }
+          }
+
+          Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: "v" + root.appVersion
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
           }
         }
       }

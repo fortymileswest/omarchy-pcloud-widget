@@ -93,11 +93,20 @@ def find_trusted_command(name):
 
 def minimal_env():
     """Create a minimal environment to prevent credential leakage."""
-    return {
+    env = {
         "PATH": "/usr/local/bin:/usr/bin:/bin",
         "HOME": HOME,
         "USER": os.environ.get("USER", ""),
     }
+    # Session locators, not secrets: secret-tool needs the D-Bus session
+    # address to reach the keyring daemon, and rclone's FUSE mount needs
+    # XDG_RUNTIME_DIR. Passing these through does not weaken the credential
+    # -leakage protection this minimal environment otherwise provides.
+    for key in ("DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"):
+        value = os.environ.get(key)
+        if value:
+            env[key] = value
+    return env
 
 # pCloud result codes we branch on.
 ERR_INVALID_REQUEST = 1101
@@ -1150,7 +1159,7 @@ def cmd_status(argv):
     token = str(token_blob().get("access_token") or "")
     payload = {
         "keyringAvailable": keyring_available(),
-        "rcloneInstalled": shutil.which("rclone") is not None,
+        "rcloneInstalled": find_trusted_command("rclone") is not None,
         "authenticated": bool(token),
         "account": config.get("account", ""),
         "host": api_host(),

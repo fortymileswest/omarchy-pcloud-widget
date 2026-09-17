@@ -18,7 +18,7 @@ import sys
 
 HELPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pcloud.py")
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "pcloud", "version": "1.0.0"}
+SERVER_INFO = {"name": "pcloud", "version": "1.0.1"}
 
 TOOLS = [
     {
